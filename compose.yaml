@@ -1,0 +1,65 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    container_name: workboard_app
+    restart: unless-stopped
+    working_dir: /var/www/html
+    volumes:
+      - .:/var/www/html
+    networks:
+      - workboard-net
+    environment:
+      - DB_HOST=db
+      - DB_PORT=3306
+      - DB_DATABASE=workboard
+      - DB_USERNAME=workboard_user
+      - DB_PASSWORD=secret
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    image: nginx:alpine
+    container_name: workboard_web
+    restart: unless-stopped
+    ports:
+      - "8008:80"
+    volumes:
+      - .:/var/www/html:ro
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - workboard-net
+    depends_on:
+      - app
+
+  db:
+    image: mysql:8.0
+    container_name: workboard_db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: workboard
+      MYSQL_USER: workboard_user
+      MYSQL_PASSWORD: secret
+      MYSQL_ROOT_PASSWORD: root_secret
+    ports:
+      - "${DB_PORT_FORWARD:-33060}:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - workboard-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot_secret"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+volumes:
+  db_data:
+    driver: local
+
+networks:
+  workboard-net:
+    driver: bridge
